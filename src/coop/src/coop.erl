@@ -19,7 +19,7 @@
          make_dag_node/3, make_dag_node/4, make_dag_node/5,
          make_dag_nodes/4, make_dag_nodes/5, make_dag_nodes/6,
          get_head_kill_switch/1, get_body_kill_switch/1,
-         is_live/1, relay_data/2, relay_high_priority_data/2
+         head/1, is_live/1, relay_data/2, relay_high_priority_data/2
         ]).
 
 %% For testing purposes only.
@@ -144,6 +144,12 @@ get_body_kill_switch(Coop_Node) ->
 %%----------------------------------------------------------------------
 %% Check if a Coop_Head, Coop_Node or raw Pid is alive.
 %%----------------------------------------------------------------------
+-spec head(coop()) -> coop_head().
+-spec is_live(none | pid() | coop_head() | coop_node() | coop_instance() | coop()) -> boolean().
+
+head(#coop{instances=#coop_instance{head=#coop_head{} = Coop_Head}}) -> Coop_Head;
+head(#coop{instances=_Ets_Table}) -> not_implemented_yet.
+    
 is_live(none) -> false;
 is_live(Pid) when is_pid(Pid) -> is_process_alive(Pid);
 is_live(#coop_head{ctl_pid=Ctl_Pid, data_pid=Data_Pid}) ->
@@ -155,8 +161,8 @@ is_live(#coop_instance{head=Coop_Head}) ->
 is_live(#coop{instances=#coop_instance{head=Coop_Head}}) ->
     is_live(Coop_Head);
 is_live(#coop{instances=Ets_Table}) ->
-    lists:all([is_live(Inst) || Inst <- ets:tab2list(Ets_Table)]).
-
+    ets:foldl(fun(#coop_instance{} = Inst, true) -> is_live(Inst);
+                 (_Any, false) -> false end, true, Ets_Table).
     
 
 %%----------------------------------------------------------------------

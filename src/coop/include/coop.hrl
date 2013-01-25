@@ -65,7 +65,7 @@
 %% Output from a Co-op or internal Co-op Nodes can flow to Pids, other Co-ops, or internal Co-op Nodes
 -type coop_receiver() :: pid() | coop() | coop_node() | none.
 
-%% A given Co-op Node can have 0, 1 or N direct receivers of its results.
+%% A given Co-op Node can have N, 1 or 0 direct receivers of its results.
 -type downstream_workers() :: queue() | {coop_receiver()} | {}.
 
 %% A proplist of options (currently only 'access_coop_head') can be specified on Co-op Nodes.

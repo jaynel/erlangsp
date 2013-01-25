@@ -1,8 +1,8 @@
 %%%------------------------------------------------------------------------------
-%%% @copyright (c) 2012, DuoMark International, Inc.  All rights reserved
+%%% @copyright (c) 2012-2013, DuoMark International, Inc.  All rights reserved
 %%% @author Jay Nelson <jay@duomark.com>
 %%% @doc
-%%%    Service behaviour is the basis for all Erlang/SP Services.
+%%%    The behaviour esp_service is the basis for all Erlang/SP Services.
 %%% @since v0.0.2
 %%% @end
 %%%------------------------------------------------------------------------------
@@ -13,7 +13,7 @@
 
 %% Public API
 -export([
-         make_service/1,
+         make_service/1, link_service/1,
          start/1, stop/1, status/1, act_on/2,
          suspend/1, suspend_for/2, resume/1, resume_after/2,
          is_overloaded/1, set_overloaded/2
@@ -31,6 +31,11 @@
 -spec make_service(coop()) -> esp_service().
 make_service(Coop) ->
     #esp_svc{coop=Coop}.
+
+%%% @doc Link a service to the calling process (used to supervise a service)
+-spec link_service(esp_service()) -> ok.
+link_service(Service) ->
+    erlang:link(coop:get_head_kill_switch(Service#esp_svc.coop)).
 
 %%% @doc Services do not operate until they are started.
 -spec start(esp_service()) -> esp_service() | {error, already_started | suspended}.
