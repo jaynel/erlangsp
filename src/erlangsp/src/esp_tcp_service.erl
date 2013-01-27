@@ -172,7 +172,8 @@ accept(_Coop_Head, State, {inet_async, _, _, _} = Inet_Async) ->
     handle_accept(State, Inet_Async);
 
 %% Handle a new client connection by notifying that acceptor is occupied...
-accept(_Coop_Head, State, {accept, Client_Socket}) ->
+accept(_Coop_Head, {Style, _Client_Module}, {accept, Client_Socket}) ->
+    Style =:= active andalso inet:setopts(Client_Socket, [{active, once}]),
     %% coop:relay_data(Coop_Head, {accepted, self()}),
     {State, ?COOP_NOOP};
 
