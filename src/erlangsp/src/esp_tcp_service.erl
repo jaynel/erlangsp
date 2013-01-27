@@ -32,7 +32,7 @@
 -export([
          new/1,
          init_listener/1, listen/2,
-         init_acceptor/1, accept/2
+         init_acceptor/1, accept/3
         ]).
 
 %%------------------------------------------------------------------------------
@@ -99,7 +99,7 @@ new({Max_Acceptors, Min_Acceptors, Socket_Options, Style})
     %% Create acceptors with no downstream consumers...
     Acc_Init_Fn = ?COOP_INIT_FN(init_acceptor, {Style}),
     Acc_Task_Fn = ?COOP_TASK_FN(accept),
-    Acceptors = coop:make_dag_nodes(Max_Acceptors, Acc_Init_Fn, Acc_Task_Fn, []),
+    Acceptors = coop:make_dag_nodes(Max_Acceptors, Acc_Init_Fn, Acc_Task_Fn, [access_coop_head]),
 
     %% Connect up the fanout of Listeners -E Acceptors -> none
     Coop = coop:new_fanout(Listener, Acceptors, none),
@@ -152,34 +152,44 @@ listen(#esp_tcp_state{} = State, {start_listen, Port}) -> start_listen(State, Po
 listen(#esp_tcp_state{} = State, stop_listen)          -> stop_listen(State).
 
 %%===== Acceptor Nodes =====
-init_acceptor({Style}) when Style =:= active; Style =:= passive -> {Style, undefined}.
+init_acceptor({_Coop_Head, {Style}}) when Style =:= active; Style =:= passive -> {Style, undefined}.
 
 %% Errors with client connections in listener layer...
-accept(State, {error, {accept, _Error}}) -> {State, ?COOP_NOOP};
-accept(State, {error, {listen, _Error}}) -> {State, ?COOP_NOOP};
-accept(State, {error, {socket_options, _Error}}) -> {State, ?COOP_NOOP};
+accept(_Coop_Head, State, {error, {accept,         _Error}}) -> {State, ?COOP_NOOP};
+accept(_Coop_Head, State, {error, {listen,         _Error}}) -> {State, ?COOP_NOOP};
+accept(_Coop_Head, State, {error, {socket_options, _Error}}) -> {State, ?COOP_NOOP};
 
 %% Change the client module used to receive data...
-accept({Style, _Old_Client_Module}, {client_module, Client_Module}) ->
+accept(_Coop_Head, {Style, _Old_Client_Module}, {client_module, Client_Module}) ->
     {{Style, Client_Module}, ?COOP_NOOP};
 
 %% Listen for client connections and pass them to the handler...
-accept(State, {do_async_accept, Listen_Socket}) ->
+accept(_Coop_Head, State, {do_async_accept, Listen_Socket}) ->
     %% error_logger:info_msg("Accepting on ~p ~p~n", [self(), erlang:port_info(Listen_Socket)]),
     {ok, _Accept_Ref} = prim_inet:async_accept(Listen_Socket, -1),
     {State, ?COOP_NOOP};
-accept(State, {inet_async, _, _, _} = Inet_Async) ->
+accept(_Coop_Head, State, {inet_async, _, _, _} = Inet_Async) ->
     handle_accept(State, Inet_Async);
 
-%% Handle a new client connection...
-accept({active, Client_Module}, {accept, Client_Socket}) ->
-    try esp_tcp_recv:active_loop(Client_Socket, Client_Module)
-    after exit(normal) %%% {State, ?COOP_EXIT}
+%% Handle a new client connection by notifying that acceptor is occupied...
+accept(_Coop_Head, State, {accept, Client_Socket}) ->
+    %% coop:relay_data(Coop_Head, {accepted, self()}),
+    {State, ?COOP_NOOP};
+
+%% Active TCP data received...
+accept(_Coop_Head, {active, Client_Module} = State, Tcp_Message) ->
+    case Tcp_Message of
+        {tcp, Socket, Data}         -> Client_Module:recv(Socket, Data),         {State, ?COOP_NOOP};
+        {tcp_error, Socket, Reason} -> Client_Module:recv_error(Socket, Reason), {State, ?COOP_NOOP};
+        {tcp_closed, Socket}        -> Client_Module:recv_closed(Socket),        exit(normal);
+        {Other, Socket} ->
+            error_logger:info_msg("Unexpected socket data: ~p ~p ~p~n", [Socket, Other, self()]),
+            exit(normal)
     end;
-accept({passive, Client_Module}, {accept, Client_Socket}) ->
-    try esp_tcp_recv:passive_loop(Client_Socket, Client_Module)
-    after exit(normal) %%% {State, ?COOP_EXIT}
-    end.
+
+%% Passive TCP is not implemented yet.
+accept(_Coop_Head, {passive, _Client_Module} = _State, _Tcp_Message) ->
+    exit(passive_tcp_not_implemented_yet).
 
 
 %%========================= Listener Node =================================

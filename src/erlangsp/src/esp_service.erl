@@ -35,7 +35,9 @@ make_service(Coop) ->
 %%% @doc Link a service to the calling process (used to supervise a service)
 -spec link_service(esp_service()) -> ok.
 link_service(Service) ->
-    erlang:link(coop:get_head_kill_switch(Service#esp_svc.coop)).
+    Head_Kill_Switch = coop:get_head_kill_switch(coop:head(Service#esp_svc.coop)),
+    link(Head_Kill_Switch),
+    Head_Kill_Switch.
 
 %%% @doc Services do not operate until they are started.
 -spec start(esp_service()) -> esp_service() | {error, already_started | suspended}.
