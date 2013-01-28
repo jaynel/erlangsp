@@ -24,16 +24,20 @@
 %% Public API
 -export([
          new_active/1,  new_active/2,  new_active/3,
-         new_passive/1, new_passive/2, new_passive/3,
-         start/2, stop/1
+         new_passive/1, new_passive/2, new_passive/3
         ]).
 
 %% Callback only or Testing API
 -export([
-         new/1,
+         new/1, start/2, stop/1,
          init_listener/1, listen/2,
          init_acceptor/1, accept/3
         ]).
+
+-callback recv(gen_tcp:socket(), string(), pos_integer(), binary()) -> ok.
+-callback recv_closed(gen_tcp:socket(), string(), pos_integer()) -> ok.
+-callback recv_error(gen_tcp:socket(), string(), pos_integer(), atom()) -> ok.
+
 
 %%------------------------------------------------------------------------------
 %%
@@ -50,6 +54,7 @@
 -include_lib("coop/include/coop.hrl").
 -include_lib("coop/include/coop_dag.hrl").
 -include("esp_service.hrl").
+-include("esp_tcp_service.hrl").
 
 %% Coop:
 %%   TCP Listener => X acceptors
@@ -152,7 +157,8 @@ listen(#esp_tcp_state{} = State, {start_listen, Port}) -> start_listen(State, Po
 listen(#esp_tcp_state{} = State, stop_listen)          -> stop_listen(State).
 
 %%===== Acceptor Nodes =====
-init_acceptor({_Coop_Head, {Style}}) when Style =:= active; Style =:= passive -> {Style, undefined}.
+init_acceptor({_Coop_Head, {active}})  -> #esp_tcp_service{active=true};
+init_acceptor({_Coop_Head, {passive}}) -> #esp_tcp_service{active=false}.
 
 %% Errors with client connections in listener layer...
 accept(_Coop_Head, State, {error, {accept,         _Error}}) -> {State, ?COOP_NOOP};
@@ -160,36 +166,35 @@ accept(_Coop_Head, State, {error, {listen,         _Error}}) -> {State, ?COOP_NO
 accept(_Coop_Head, State, {error, {socket_options, _Error}}) -> {State, ?COOP_NOOP};
 
 %% Change the client module used to receive data...
-accept(_Coop_Head, {Style, _Old_Client_Module}, {client_module, Client_Module}) ->
-    {{Style, Client_Module}, ?COOP_NOOP};
+accept(_Coop_Head, #esp_tcp_service{} = State, {client_module, Client_Module}) ->
+    {State#esp_tcp_service{client_module=Client_Module}, ?COOP_NOOP};
 
 %% Listen for client connections and pass them to the handler...
-accept(_Coop_Head, State, {do_async_accept, Listen_Socket}) ->
+accept(_Coop_Head, #esp_tcp_service{} = State, {do_async_accept, Listen_Socket}) ->
     %% error_logger:info_msg("Accepting on ~p ~p~n", [self(), erlang:port_info(Listen_Socket)]),
     {ok, _Accept_Ref} = prim_inet:async_accept(Listen_Socket, -1),
     {State, ?COOP_NOOP};
-accept(_Coop_Head, State, {inet_async, _, _, _} = Inet_Async) ->
+accept(_Coop_Head, #esp_tcp_service{} = State, {inet_async, _, _, _} = Inet_Async) ->
     handle_accept(State, Inet_Async);
 
 %% Handle a new client connection by notifying that acceptor is occupied...
-accept(_Coop_Head, {Style, _Client_Module} = State, {accept, Client_Socket}) ->
-    Style =:= active andalso inet:setopts(Client_Socket, [{active, once}]),
+accept(_Coop_Head, #esp_tcp_service{active=Active} = State, {accept, Client_Socket}) ->
+    Active andalso inet:setopts(Client_Socket, [{active, once}]),
     %% coop:relay_data(Coop_Head, {accepted, self()}),
-    {State, ?COOP_NOOP};
+    {ok, {Ip, Port}} = inet:peername(Client_Socket),
+    {State#esp_tcp_service{ip=Ip, port=Port, socket=Client_Socket}, ?COOP_NOOP};
 
 %% Active TCP data received...
-accept(_Coop_Head, {active, Client_Module} = State, Tcp_Message) ->
+accept(_Coop_Head, #esp_tcp_service{active=true, client_module=CM, socket=Socket,
+                                    ip=Ip, port=Port} = State, Tcp_Message) ->
     case Tcp_Message of
-        {tcp, Socket, Data}         -> Client_Module:recv(Socket, Data),         {State, ?COOP_NOOP};
-        {tcp_error, Socket, Reason} -> Client_Module:recv_error(Socket, Reason), {State, ?COOP_NOOP};
-        {tcp_closed, Socket}        -> Client_Module:recv_closed(Socket),        exit(normal);
-        {Other, Socket} ->
-            error_logger:info_msg("Unexpected socket data: ~p ~p ~p~n", [Socket, Other, self()]),
-            exit(normal)
+        {tcp,        Socket, Data}   -> CM:recv(Socket, Ip, Port, Data),         {State, ?COOP_NOOP};
+        {tcp_error,  Socket, Reason} -> CM:recv_error(Socket, Ip, Port, Reason), {State, ?COOP_NOOP};
+        {tcp_closed, Socket}         -> CM:recv_closed(Socket, Ip, Port),        exit(normal)
     end;
 
 %% Passive TCP is not implemented yet.
-accept(_Coop_Head, {passive, _Client_Module} = _State, _Tcp_Message) ->
+accept(_Coop_Head, #esp_tcp_service{active=false} = _State, _Tcp_Message) ->
     exit(passive_tcp_not_implemented_yet).
 
 
