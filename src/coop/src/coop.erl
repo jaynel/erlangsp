@@ -54,7 +54,7 @@ new_pipeline([#coop_dag_node{} | _More] = Node_Fns, Receiver) ->
     Coop_Instance = make_coop_instance(1, Coop_Head, Coop_Root_Node, Pipeline_Graph),
     finish_new_coop(Coop_Instance, Head_Kill_Switch, Body_Kill_Switch, Template_Graph).
     
-new_fanout(#coop_dag_node{} = Router_Fn, [#coop_dag_node{} | _More] = Workers, Receiver) ->
+new_fanout(#coop_dag_node{} = Router_Fn, Workers, Receiver) ->
     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     Coop_Head = coop_head:new(Head_Kill_Switch, none),
     Body_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
@@ -235,8 +235,7 @@ spawn_pipeline_stage(Coop_Head, Kill_Switch, Graph,
 %%----------------------------------------------------------------------
 %% Fanout patterns
 %%----------------------------------------------------------------------
-fanout(Coop_Head, Kill_Switch, #coop_dag_node{name=Inbound} = Router_Fn,
-       [#coop_dag_node{} | _More] = Workers, Receiver) ->
+fanout(Coop_Head, Kill_Switch, #coop_dag_node{name=Inbound} = Router_Fn, Workers, Receiver) ->
     Fanout_Graph = coop_flow:fanout(Router_Fn, Workers, Receiver),
     fanout(Inbound, Coop_Head, Kill_Switch, Fanout_Graph).
     

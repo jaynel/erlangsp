@@ -23,13 +23,13 @@
 
 %% Public API
 -export([
-         new_active/1,  new_active/2,  new_active/3,
-         new_passive/1, new_passive/2, new_passive/3
+         new_active/2,  new_active/3,  new_active/4,
+         new_passive/2, new_passive/3, new_passive/4
         ]).
 
 %% Callback only or Testing API
 -export([
-         new/1, start/2, stop/1,
+         new/2, start/2, stop/1,
          init_listener/1, listen/2,
          init_acceptor/1, accept/3
         ]).
@@ -61,11 +61,11 @@
 -type service_args() :: {pos_integer(), module()}
                       | {pos_integer(), module(), proplists:proplist()}.
 
--spec new_active(service_args()) -> coop().
--spec new_active(service_args(), proplists:proplist()) -> coop().
+-spec new_active(service_args(), coop() | pid()) -> coop().
+-spec new_active(service_args(), proplists:proplist(), coop() | pid()) -> coop().
 
--spec new_passive(service_args()) -> coop().
--spec new_passive(service_args(), proplists:proplist()) -> coop().
+-spec new_passive(service_args(), coop() | pid()) -> coop().
+-spec new_passive(service_args(), proplists:proplist(), coop() | pid()) -> coop().
 
 -spec start(esp_service(), proplists:proplist()) ->
                    esp_service() | {error, already_started | suspended}.
@@ -73,19 +73,19 @@
 
 -define(SOCKET_OPTIONS, [binary, {packet, raw}, {backlog, 30}, {reuseaddr, true}, {recbuf, 8192}]).
 
-new_active(Num_Acceptors) -> new({Num_Acceptors, Num_Acceptors, ?SOCKET_OPTIONS, active}).
-new_active(Max_Acc, Min_Acc)                 -> new({Max_Acc, Min_Acc, ?SOCKET_OPTIONS, active}).
-new_active(Max_Acc, Min_Acc, Socket_Options) -> new({Max_Acc, Min_Acc,  Socket_Options, active}).
+new_active(Num_Acceptors, Fan_In) -> new({Num_Acceptors, Num_Acceptors, ?SOCKET_OPTIONS, active}, Fan_In).
+new_active(Max_Acc, Min_Acc, Fan_In)                 -> new({Max_Acc, Min_Acc, ?SOCKET_OPTIONS, active}, Fan_In).
+new_active(Max_Acc, Min_Acc, Socket_Options, Fan_In) -> new({Max_Acc, Min_Acc,  Socket_Options, active}, Fan_In).
 
-new_passive(Num_Acceptors) -> new({Num_Acceptors, Num_Acceptors, ?SOCKET_OPTIONS, passive}).
-new_passive(Max_Acc, Min_Acc)                 -> new({Max_Acc, Min_Acc, ?SOCKET_OPTIONS, passive}).
-new_passive(Max_Acc, Min_Acc, Socket_Options) -> new({Max_Acc, Min_Acc,  Socket_Options, passive}).
+new_passive(Num_Acceptors, Fan_In) -> new({Num_Acceptors, Num_Acceptors, ?SOCKET_OPTIONS, passive}, Fan_In).
+new_passive(Max_Acc, Min_Acc, Fan_In)                 -> new({Max_Acc, Min_Acc, ?SOCKET_OPTIONS, passive}, Fan_In).
+new_passive(Max_Acc, Min_Acc, Socket_Options, Fan_In) -> new({Max_Acc, Min_Acc,  Socket_Options, passive}, Fan_In).
 
-new({Max_Acceptors, Min_Acceptors, Socket_Options, Style}) when is_list(Max_Acceptors) ->
-    new({list_to_integer(atom_to_list(hd(Max_Acceptors))), Min_Acceptors, Socket_Options, Style});
-new({Max_Acceptors, Min_Acceptors, Socket_Options, Style}) when is_list(Min_Acceptors) ->
-    new({Max_Acceptors, list_to_integer(atom_to_list(hd(Min_Acceptors))), Socket_Options, Style});
-new({Max_Acceptors, Min_Acceptors, Socket_Options, Style})
+new({Max_Acceptors, Min_Acceptors, Socket_Options, Style}, Fan_In) when is_list(Max_Acceptors) ->
+    new({list_to_integer(atom_to_list(hd(Max_Acceptors))), Min_Acceptors, Socket_Options, Style}, Fan_In);
+new({Max_Acceptors, Min_Acceptors, Socket_Options, Style}, Fan_In) when is_list(Min_Acceptors) ->
+    new({Max_Acceptors, list_to_integer(atom_to_list(hd(Min_Acceptors))), Socket_Options, Style}, Fan_In);
+new({Max_Acceptors, Min_Acceptors, Socket_Options, Style}, Fan_In)
   when is_integer(Max_Acceptors), Max_Acceptors > 0,
        is_integer(Min_Acceptors), Min_Acceptors > 0,
        is_list(Socket_Options), Style =:= active;
@@ -106,8 +106,8 @@ new({Max_Acceptors, Min_Acceptors, Socket_Options, Style})
     Acc_Task_Fn = ?COOP_TASK_FN(accept),
     Acceptors = coop:make_dag_nodes(Max_Acceptors, Acc_Init_Fn, Acc_Task_Fn, [access_coop_head]),
 
-    %% Connect up the fanout of Listeners -E Acceptors -> none
-    Coop = coop:new_fanout(Listener, Acceptors, none),
+    %% Connect up the fanout of Listeners -E Acceptors -> Fan_In
+    Coop = coop:new_fanout(Listener, Acceptors, Fan_In),
     esp_service:make_service(Coop).
 
 start(Tcp_Service, Opts) ->

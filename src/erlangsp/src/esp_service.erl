@@ -22,7 +22,8 @@
 -include_lib("coop/include/coop.hrl").
 -include("esp_service.hrl").
 
--callback new(Args::tuple()) -> Service::esp_service().
+-type output_receiver() :: coop() | pid().
+-callback new(Args::tuple(), output_receiver()) -> Service::esp_service().
 -callback start(Service::esp_service(), Options::proplists:proplist()) ->
     esp_service() | {error, already_started | suspended}.
 -callback stop(Service::esp_service()) -> esp_service() | {error, already_stopped}.

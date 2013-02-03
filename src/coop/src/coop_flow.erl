@@ -42,24 +42,29 @@ chain_vertices(Graph, [H1,H2 | T]) ->
 
 %%----------------------------------------------------------------------
 %% Fanout patterns
-%%   fanout flow is Graph<{Name, Fn} => [... {Name, Fn} ...] => {Name, Fn}>
+%%   fanout flow is Graph<{Name,Fn} => [... {Name,Fn} ...] => {Name,Fn}>
 %%----------------------------------------------------------------------
--spec fanout(#coop_dag_node{}, [#coop_dag_node{}], coop_receiver()) -> digraph().
+-spec fanout(#coop_dag_node{}, [#coop_dag_node{}], coop_receiver())
+            -> digraph().
 
 fanout(#coop_dag_node{name=Name, label=Node_Fn} = _Router_Fn,
-       [#coop_dag_node{}|_More] = Workers, Fan_In_Receiver) ->
+       Workers, Fan_In_Receiver) ->
+
     Graph = digraph:new([acyclic]),
     Inbound = make_named_vertex(Graph, Name, Node_Fn, inbound),
-    Outbound = case Fan_In_Receiver of
-                   none  -> none;
-                   _Node -> digraph:add_vertex(Graph, outbound, Fan_In_Receiver)
-               end,
-    _Frontier = [begin
-                     V = make_named_vertex(Graph, FName, FNode_Fn, worker),
-                     digraph:add_edge(Graph, Inbound, V),
-                     Outbound =:= none orelse digraph:add_edge(Graph, V, Outbound),
-                     V
-                 end || #coop_dag_node{name=FName, label=FNode_Fn} <- Workers],
+    Outbound =
+        case Fan_In_Receiver of
+            none  -> none;
+            _Node -> digraph:add_vertex(Graph, outbound, Fan_In_Receiver)
+        end,
+    _Frontier =
+        [begin
+             V = make_named_vertex(Graph, FName, FNode_Fn, worker),
+             digraph:add_edge(Graph, Inbound, V),
+             Outbound =:= none
+                 orelse digraph:add_edge(Graph, V, Outbound),
+             V
+         end || #coop_dag_node{name=FName, label=FNode_Fn} <- Workers],
     Graph.
 
 
