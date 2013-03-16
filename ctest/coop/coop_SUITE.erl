@@ -45,9 +45,12 @@ init([f1]) -> f1;
 init([f2]) -> f2;
 init([f3]) -> f3.
 
-make_fake_head() ->
-    Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    coop_head:new(Head_Kill_Switch, none).
+%% make_fake_instance() ->
+%%     #coop_instance{id=1, name=fake, head=make_fake_head(), body=none, dag=none}.
+
+%% make_fake_head() ->
+%%     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
+%%     coop_head:new(Head_Kill_Switch, none).
 
 %% Init state and looping state are unused, but checked placeholders.
 plus2(f1, Num)  -> {f1, Num+2}.
@@ -97,13 +100,11 @@ pipeline_flow(_Config) ->
 
 pipeline(_Config) ->
     Pid = spawn_link(?MODULE, receive_pipe_results, []),
-    Pipe_Stages = example_pipeline_fns(),
-    Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    {First_Stage_Node, _Template_Graph, Coops_Graph}
-        = coop:pipeline(make_fake_head(), Kill_Switch, Pipe_Stages, Pid),
+    Coop = coop:new_pipeline(example_pipeline_fns(), Pid),
+    Coops_Graph = (Coop#coop.instances)#coop_instance.dag,
     Pipe_Stats = digraph:info(Coops_Graph),
     acyclic = proplists:get_value(cyclicity, Pipe_Stats),
-    coop:relay_data(First_Stage_Node, 7),
+    coop:relay_data(Coop, 7),
     timer:sleep(100),
     ok = fetch_results(Pid).
     
@@ -163,7 +164,6 @@ fanout_flow(_Config) ->
     [check_fanout_vertex(Coop_Flow, 8, {N,funnel,#coop_node_fn{}}, 1, 1) || N <- lists:seq(1,8)].
 
 make_fanout_coop(Dataflow_Type, Num_Workers, Receiver_Pid) ->
-    Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
     Router_Fn = #coop_dag_node{
       name = inbound,
       label = #coop_node_fn{init={?MODULE, rr_init, [0]}, task={?MODULE, rr_inc}, flow=Dataflow_Type}
@@ -172,18 +172,19 @@ make_fanout_coop(Dataflow_Type, Num_Workers, Receiver_Pid) ->
                           name = "inc_by_" ++ integer_to_list(N),
                           label = #coop_node_fn{init={?MODULE, rr_init, [N]}, task={?MODULE, rr_inc}}}
                        || N <- lists:seq(1, Num_Workers)],
-    coop:fanout(make_fake_head(), Kill_Switch, Router_Fn, Worker_Node_Fns, Receiver_Pid).
+    coop:new_fanout(Router_Fn, Worker_Node_Fns, Receiver_Pid).
     
 fanout_round_robin(_Config) ->
     Num_Results = 6,
     Num_Workers = 3,
     Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
-    {Root_Coop_Node, _Template_Graph, Coops_Graph} = make_fanout_coop(round_robin, Num_Workers, Receiver_Pid),
+    Coop = make_fanout_coop(round_robin, Num_Workers, Receiver_Pid),
+    Coops_Graph = (Coop#coop.instances)#coop_instance.dag,
     Fanout_Stats = digraph:info(Coops_Graph),
     acyclic = proplists:get_value(cyclicity, Fanout_Stats),
     5 = digraph:no_vertices(Coops_Graph),
     6 = digraph:no_edges(Coops_Graph),
-    [coop:relay_data(Root_Coop_Node, 5) || _N <- lists:seq(1, Num_Results)],
+    [coop:relay_data(Coop, 5) || _N <- lists:seq(1, Num_Results)],
     timer:sleep(100),
     Results6 = fetch_results(Receiver_Pid),
     6 = length(Results6),
@@ -198,12 +199,13 @@ fanout_broadcast(_Config) ->
     Num_Results = 12,
     Num_Workers = 4,
     Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
-    {Root_Coop_Node, _Template_Graph, Coops_Graph} = make_fanout_coop(broadcast, Num_Workers, Receiver_Pid),
+    Coop = make_fanout_coop(broadcast, Num_Workers, Receiver_Pid),
+    Coops_Graph = (Coop#coop.instances)#coop_instance.dag,
     Fanout_Stats = digraph:info(Coops_Graph),
     acyclic = proplists:get_value(cyclicity, Fanout_Stats),
     6 = digraph:no_vertices(Coops_Graph),
     8 = digraph:no_edges(Coops_Graph),
-    [coop:relay_data(Root_Coop_Node, 7) || _N <- lists:seq(1, Num_Results div Num_Workers)],
+    [coop:relay_data(Coop, 7) || _N <- lists:seq(1, Num_Results div Num_Workers)],
     timer:sleep(100),
     Results12 = fetch_results(Receiver_Pid),
     12 = length(Results12),

@@ -40,7 +40,7 @@
 %% Graph API
 -export([
          %% Create coop_head instances...
-         new/2, get_kill_switch/1, 
+         new/2, get_kill_switch/1,
 
          %% Send commands to coop_head control process...
          %% ctl_clone/1,
@@ -101,44 +101,30 @@
 
 -spec ctl_stats(coop_head(), boolean() | get, pid()) -> ok | {ok, list()}.
 
-send_ctl_msg_internal(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg) ->
-    Head_Ctl_Pid  ! {?DAG_TOKEN, ?CTL_TOKEN,  Msg}, ok.
-send_data_msg_internal(#coop_head{data_pid=Head_Data_Pid}, Msg) ->
-    Head_Data_Pid ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
-send_ctl_msg_internal_after(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg, Millis) ->
-    erlang:send_after(Millis, Head_Ctl_Pid, Msg).
+send_ctl_msg_internal(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg)               -> Head_Ctl_Pid  ! ?CTL_MSG(Msg),                          ok.
+send_ctl_msg_internal(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg, Flag, From)   -> Head_Ctl_Pid  ! ?CTL_MSG(Msg, Flag, From),              ok.
+send_ctl_msg_internal_after(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg, Millis) -> erlang:send_after(Millis, Head_Ctl_Pid, ?CTL_MSG(Msg)), ok.
     
+send_ctl_msg(Coop_Head, Msg)                    -> send_ctl_msg_internal(Coop_Head, Msg).
+send_ctl_msg(Coop_Head, Msg, Flag, From)        -> send_ctl_msg_internal(Coop_Head, Msg, Flag, From).
+send_ctl_msg_after(Coop_Head, Msg, Millis)      -> send_ctl_msg_internal_after(Coop_Head, Msg, Millis).
+send_ctl_change_timeout(Coop_Head, New_Timeout) -> send_ctl_msg_internal(Coop_Head, {change_timeout, New_Timeout}).
     
-send_ctl_msg(Coop_Head, Msg) ->
-    send_ctl_msg_internal(Coop_Head, Msg).
-send_ctl_msg(Coop_Head, Msg, Flag, From) ->
-    send_ctl_msg_internal(Coop_Head, {Msg, Flag, From}).
-send_ctl_msg_after(Coop_Head, Msg, Millis) ->
-    send_ctl_msg_internal_after(Coop_Head, Msg, Millis).
-send_ctl_change_timeout(Coop_Head, New_Timeout) ->
-    send_ctl_msg_internal(Coop_Head, {change_timeout, New_Timeout}).
-    
-send_data_msg(Coop_Head, Msg) ->
-    send_data_msg_internal(Coop_Head, Msg).
-send_priority_data_msg(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg) ->
-    Head_Ctl_Pid  ! {?DAG_TOKEN, ?DATA_TOKEN, Msg}, ok.
-send_data_change_timeout(#coop_head{data_pid=Head_Data_Pid}, New_Timeout) ->
-    Head_Data_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {change_timeout, New_Timeout}},
-    ok.
+send_data_msg_internal(#coop_head{data_pid=Head_Data_Pid}, Msg) -> Head_Data_Pid ! ?DATA_MSG(Msg), ok.
 
-stop(Coop_Head)          -> send_ctl_msg(Coop_Head, {stop}).
-suspend_root(Coop_Head)  -> send_ctl_msg(Coop_Head, {suspend}).
-resume_root(Coop_Head)   -> send_ctl_msg(Coop_Head, {resume}).
-format_status(Coop_Head) -> send_ctl_msg(Coop_Head, {format_status}).
+send_data_msg(Coop_Head, Msg)                                             -> send_data_msg_internal(Coop_Head, Msg).
+send_priority_data_msg(#coop_head{ctl_pid=Head_Ctl_Pid}, Msg)             -> Head_Ctl_Pid  ! ?DATA_MSG(Msg),                          ok.
+send_data_change_timeout(#coop_head{data_pid=Head_Data_Pid}, New_Timeout) -> Head_Data_Pid ! ?CTL_MSG({change_timeout, New_Timeout}), ok.
 
-stop_after(Coop_Head, Millis) ->
-    send_ctl_msg_after(Coop_Head, {stop}, Millis).
-suspend_root_after(Coop_Head, Millis) ->
-    send_ctl_msg_after(Coop_Head, {suspend}, Millis).
-resume_root_after(Coop_Head, Millis) ->
-    send_ctl_msg_after(Coop_Head, {resume}, Millis).
-format_status_after(Coop_Head, Millis) ->
-    send_ctl_msg_after(Coop_Head, {format_status}, Millis).
+stop(Coop_Head)          -> send_ctl_msg(Coop_Head, stop).
+suspend_root(Coop_Head)  -> send_ctl_msg(Coop_Head, suspend).
+resume_root(Coop_Head)   -> send_ctl_msg(Coop_Head, resume).
+format_status(Coop_Head) -> send_ctl_msg(Coop_Head, format_status).
+
+stop_after(Coop_Head, Millis)          -> send_ctl_msg_after(Coop_Head, stop,          Millis).
+suspend_root_after(Coop_Head, Millis)  -> send_ctl_msg_after(Coop_Head, suspend,       Millis).
+resume_root_after(Coop_Head, Millis)   -> send_ctl_msg_after(Coop_Head, resume,        Millis).
+format_status_after(Coop_Head, Millis) -> send_ctl_msg_after(Coop_Head, format_status, Millis).
 
 ctl_stats(Coop_Head, Flag, From) ->
     Ref = make_ref(),
@@ -170,8 +156,7 @@ wait_ctl_response(Type, Ref) ->
     after ?SYNC_RCV_TIMEOUT -> timeout
     end.
 
-set_root_node({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head,
-              {coop_node, _Node_Ctl_Pid, _Node_Task_Pid} = Coop_Node) ->
+set_root_node(#coop_head{} = Coop_Head, #coop_node{} = Coop_Node) ->
     Ref = make_ref(),
     send_ctl_msg(Coop_Head, {set_root_node, Coop_Node, {Ref, self()}}),
     wait_ctl_response(set_root_node, Ref).
@@ -181,7 +166,7 @@ set_root_node({coop_head, _Head_Ctl_Pid, _Head_Data_Pid} = Coop_Head,
 %% Create a new coop_head. A coop_head is represented by a pair of
 %% pids: a control process and a data process.
 %%----------------------------------------------------------------------
--spec new(pid(), pid()) -> coop_head().
+-spec new(pid(), coop_node() | none) -> coop_head().
 
 new(Kill_Switch, Coop_Node)
   when is_pid(Kill_Switch) ->
@@ -196,7 +181,7 @@ new(Kill_Switch, Coop_Node)
     Ctl_State = #coop_head_state{kill_switch=Kill_Switch, ctl=Ctl_Pid, data=Data_Pid,
                                  root=Root_Pid, log=Log_Pid, trace=Trace_Pid,
                                  reflect=Reflect_Pid, coop_root_node=Coop_Node},
-    Ctl_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {init_state, Ctl_State}},
+    Ctl_Pid ! ?CTL_MSG({init_state, Ctl_State}),
 
     %% Link all pids to the Kill_Switch and return the coop_head.
     Kill_Link_Args = [Ctl_Pid, Data_Pid, Root_Pid, Trace_Pid, Log_Pid, Reflect_Pid],

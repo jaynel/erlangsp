@@ -15,17 +15,17 @@
           task_pid :: pid()
          }).
 
--type coop_head() :: #coop_head{} | none.
--type coop_node() :: #coop_node{} | none.
+-type coop_head() :: #coop_head{}.
+-type coop_node() :: #coop_node{}.
 -type coop_body() :: coop_node().
 
 %% A Co-op Instance is a Co-op Head and Co-op Body with live processes populating the graph nodes
 -record(coop_instance, {
           id          :: integer(),
           name        :: atom(),
-          head = none :: coop_head(),
-          body = none :: coop_body(),
-          dag         :: digraph()
+          head = none :: coop_head() | none,
+          body = none :: coop_body() | none,
+          dag  = none :: digraph()   | none
           }).
 
 -type coop_instance() :: #coop_instance{}.
@@ -68,11 +68,13 @@
 %% A given Co-op Node can have N, 1 or 0 direct receivers of its results.
 -type downstream_workers() :: queue() | {coop_receiver()} | {}.
 
-%% A proplist of options (currently only 'access_coop_head') can be specified on Co-op Nodes.
-%% If true, access_coop_head exposes the Co-op Head in the arglist of the Node Task Function.
+%% A proplist of options (currently only [{access_coop, instance | head}]) can be specified on Co-op Nodes.
+%% If head this option exposes the Co-op Head in the arglist of the Node Task Function,
+%% if instance this option exposes the Co-op Instance,
+%% if none this option does not expose an extra arg in the Node Task Fucntion return.
 -type coop_data_options() :: [proplists:property()].
 -record(coop_node_options, {
-          access_coop_head = false :: boolean()
+          access_coop = none :: none | head | instance
          }).
 
 %% Co-op Nodes are initialized as M:F(Arg) or M:F({Coop_Head, Arg})

@@ -34,21 +34,21 @@ node_ctl_loop(Kill_Switch, Task_Pid, Init_Fn, Node_Fn, Trace_Pid, Log_Pid, Refle
 node_ctl_loop(#coop_node_state{task=Task_Pid, trace=Trace_Pid} = Coop_Node_State) ->
     receive
         %% Commands for controlling the entire Coop_Node element...
-        {?DAG_TOKEN, ?CTL_TOKEN, stop}    -> exit(stopped);
-        {?DAG_TOKEN, ?CTL_TOKEN, clone}   -> node_clone(Coop_Node_State);
+        ?CTL_MSG(stop)    -> exit(stopped);
+        ?CTL_MSG(clone)   -> node_clone(Coop_Node_State);
 
         %% Commands for controlling/monitoring the Task_Pid...
-        {?DAG_TOKEN, ?CTL_TOKEN, suspend } -> sys:suspend(Task_Pid);
-        {?DAG_TOKEN, ?CTL_TOKEN, resume  } -> sys:resume(Task_Pid);
-        {?DAG_TOKEN, ?CTL_TOKEN, trace   } -> erlang:trace(Task_Pid, true,  trace_options(Trace_Pid));
-        {?DAG_TOKEN, ?CTL_TOKEN, untrace } -> erlang:trace(Task_Pid, false, trace_options(Trace_Pid));
+        ?CTL_MSG(suspend) -> sys:suspend(Task_Pid);
+        ?CTL_MSG(resume)  -> sys:resume(Task_Pid);
+        ?CTL_MSG(trace)   -> erlang:trace(Task_Pid, true,  trace_options(Trace_Pid));
+        ?CTL_MSG(untrace) -> erlang:trace(Task_Pid, false, trace_options(Trace_Pid));
 
-        {?DAG_TOKEN, ?CTL_TOKEN, log,         Flag,  {Ref, From}} -> From ! {node_ctl_log, Ref, sys:log(Task_Pid, Flag)};
-        {?DAG_TOKEN, ?CTL_TOKEN, log_to_file, File,  {Ref, From}} -> From ! {node_ctl_log_to_file, Ref, sys:log_to_file(Task_Pid, File)};
-        {?DAG_TOKEN, ?CTL_TOKEN, stats,       Flag,  {Ref, From}} -> From ! {node_ctl_stats, Ref, sys:statistics(Task_Pid, Flag)};
+        ?CTL_MSG(log,         Flag, {Ref, From}) -> From ! {node_ctl_log, Ref, sys:log(Task_Pid, Flag)};
+        ?CTL_MSG(log_to_file, File, {Ref, From}) -> From ! {node_ctl_log_to_file, Ref, sys:log_to_file(Task_Pid, File)};
+        ?CTL_MSG(stats,       Flag, {Ref, From}) -> From ! {node_ctl_stats, Ref, sys:statistics(Task_Pid, Flag)};
 
-        {?DAG_TOKEN, ?CTL_TOKEN, install_trace_fn, FInfo, {Ref, From}} -> From ! {node_ctl_install_trace_fn, Ref, sys:install(Task_Pid, FInfo)};
-        {?DAG_TOKEN, ?CTL_TOKEN, remove_trace_fn, FInfo, {Ref, From}}  -> From ! {node_ctl_remove_trace_fn,  Ref, sys:remove(Task_Pid, FInfo)};
+        ?CTL_MSG(install_trace_fn, FInfo, {Ref, From}) -> From ! {node_ctl_install_trace_fn, Ref, sys:install(Task_Pid, FInfo)};
+        ?CTL_MSG(remove_trace_fn,  FInfo, {Ref, From}) -> From ! {node_ctl_remove_trace_fn,  Ref, sys:remove(Task_Pid, FInfo)};
 
         %% All others are unknown commands, just unqueue them.
         _Skip_Unknown_Msgs                -> do_nothing

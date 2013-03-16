@@ -66,22 +66,23 @@ end_per_group(_Group, _Config) -> ok.
 init_noop({}) -> {}.
 x3({}, N) -> {{}, N * 3}.
 
-make_fake_head() ->
+make_fake_instance() ->
     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-    coop_head:new(Head_Kill_Switch, none).
+    Coop_Head = coop_head:new(Head_Kill_Switch, none),
+    #coop_instance{id=1, head=Coop_Head, body=none, dag=none}.
 
 create_new_coop_node_args() ->
     Kill_Switch = ?CK:make_kill_switch(),
     true = is_process_alive(Kill_Switch),
-    [make_fake_head(), Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}, []].
+    [make_fake_instance(), Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}, []].
 
 create_new_coop_node_args(Dist_Type) ->
     Kill_Switch = ?CK:make_kill_switch(),
     true = is_process_alive(Kill_Switch),
-    [make_fake_head(), Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}, [], Dist_Type].
+    [make_fake_instance(), Kill_Switch, {?MODULE, x3}, {?MODULE, init_noop, {}}, [], Dist_Type].
 
 node_ctl_kill_one_proc(_Config) ->
-    Args = [_Coop_Head, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
+    Args = [_Coop_Instance, Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
     #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid} = apply(?TM, new, Args),
     true = is_process_alive(Node_Ctl_Pid),
     true = is_process_alive(Node_Task_Pid),
@@ -136,17 +137,17 @@ get_result_data(Pid) ->
     receive Any -> Any after 50 -> timeout end.
 
 setup_no_downstream() ->    
-    Args = [Coop_Head, _Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
+    Args = [Coop_Instance, _Kill_Switch, _Node_Fn, _Init_Fn, _Opts] = create_new_coop_node_args(),
     Coop_Node = apply(?TM, new, Args),
-    coop_head:set_root_node(Coop_Head, Coop_Node),
+    coop_head:set_root_node(Coop_Instance#coop_instance.head, Coop_Node),
     [] = ?TM:node_task_get_downstream_pids(Coop_Node),
     Coop_Node.
 
 setup_no_downstream(Dist_Type) ->    
-    Args = [Coop_Head, _Kill_Switch, _Node_Fn, _Init_Fn, _Opts, Dist_Type]
+    Args = [Coop_Instance, _Kill_Switch, _Node_Fn, _Init_Fn, _Opts, Dist_Type]
         = create_new_coop_node_args(Dist_Type),
     Coop_Node = apply(?TM, new, Args),
-    coop_head:set_root_node(Coop_Head, Coop_Node),
+    coop_head:set_root_node(Coop_Instance#coop_instance.head, Coop_Node),
     [] = ?TM:node_task_get_downstream_pids(Coop_Node),
     Coop_Node.
     

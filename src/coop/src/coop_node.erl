@@ -16,7 +16,7 @@
 %% Graph API
 -export([
          %% Create coop_node instances...
-         new/5, new/6,
+         new/5, new/6, get_kill_switch/1,
 
          %% Send commands to coop_node control process...
          node_ctl_clone/1, node_ctl_stop/1,
@@ -30,8 +30,12 @@
          %% Send data to a node...
          node_task_deliver_data/2,
 
-         %% Inspect and add to downstream receivers.
-         node_task_get_downstream_pids/1, node_task_add_downstream_pids/2
+         %% Inspect and add to downstream receivers...
+         node_task_get_downstream_pids/1, node_task_add_downstream_pids/2,
+         node_task_remove_downstream_pids/2,
+
+         %% Send commands to coop_node control process...
+         send_ctl_msg/2, send_ctl_msg/4, send_ctl_msg_after/3
         ]).
 
 %% Internal functions for spawned processes
@@ -45,20 +49,19 @@
 %% Create a new coop_node. A coop_node is represented by a pair of
 %% pids: a control process and a data task process.
 %%----------------------------------------------------------------------
--spec new(coop_head(), pid(), coop_task_fn(), coop_init_fn(), coop_data_options()) -> coop_node().
--spec new(coop_head(), pid(), coop_task_fn(), coop_init_fn(), coop_data_options(), data_flow_method()) -> coop_node().
+-spec new(coop_instance(), pid(), coop_task_fn(), coop_init_fn(), coop_data_options()) -> coop_node().
+-spec new(coop_instance(), pid(), coop_task_fn(), coop_init_fn(), coop_data_options(), data_flow_method()) -> coop_node().
 
 %% Broadcast is default for downstream data distribution.
 %% Optimized for special case of 1 downstream pid.
-new(Coop_Head, Kill_Switch, Node_Fn, Init_Fn, Data_Opts) ->
-    new(Coop_Head, Kill_Switch, Node_Fn, Init_Fn, Data_Opts, broadcast).
+new(#coop_instance{} = Coop_Inst, Kill_Switch, Node_Fn, Init_Fn, Data_Opts) ->
+    new(Coop_Inst, Kill_Switch, Node_Fn, Init_Fn, Data_Opts, broadcast).
 
 %% Override downstream data distribution.
-new(#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head, Kill_Switch,
-    {_Task_Mod, _Task_Fn} = Node_Fn, {_Mod, _Fun, _Args} = Init_Fn,
-    Data_Opts, Data_Flow_Method)
+new(#coop_instance{} = Coop_Inst, Kill_Switch, {_Task_Mod, _Task_Fn} = Node_Fn,
+    {_Mod, _Fun, _Args} = Init_Fn, Data_Opts, Data_Flow_Method)
 
-  when is_pid(Head_Ctl_Pid), is_pid(Head_Data_Pid), is_pid(Kill_Switch),
+  when is_pid(Kill_Switch),
        is_atom(_Task_Mod), is_atom(_Task_Fn), is_atom(_Mod), is_atom(_Fun),
        is_list(Data_Opts),
        (        Data_Flow_Method =:= random
@@ -66,7 +69,7 @@ new(#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head, Kill_S
          orelse Data_Flow_Method =:= broadcast   ) ->
 
     %% Start the data task process...
-    Task_Pid = make_data_task_pid(Coop_Head, Node_Fn, Init_Fn, Data_Opts, Data_Flow_Method),
+    Task_Pid = make_data_task_pid(Coop_Inst, Node_Fn, Init_Fn, Data_Opts, Data_Flow_Method),
 
     %% Start support function processes...
     {Trace_Pid, Log_Pid, Reflect_Pid} = make_support_pids(),
@@ -79,9 +82,9 @@ new(#coop_head{ctl_pid=Head_Ctl_Pid, data_pid=Head_Data_Pid} = Coop_Head, Kill_S
     coop_kill_link_rcv:link_to_kill_switch(Kill_Switch, [Ctl_Pid, Task_Pid, Trace_Pid, Log_Pid, Reflect_Pid]),
     #coop_node{ctl_pid=Ctl_Pid, task_pid=Task_Pid}.
 
-make_data_task_pid(Coop_Head, Node_Fn, Init_Fn, Data_Opts, Data_Flow_Method) ->
+make_data_task_pid(Coop_Inst, Node_Fn, Init_Fn, Data_Opts, Data_Flow_Method) ->
     Worker_Set = case Data_Flow_Method of random -> {}; _Other -> queue:new() end,
-    Task_Args = [Coop_Head, Node_Fn, Init_Fn, Worker_Set, Data_Opts, Data_Flow_Method],
+    Task_Args = [Coop_Inst, Node_Fn, Init_Fn, Worker_Set, Data_Opts, Data_Flow_Method],
     proc_lib:spawn(coop_node_data_rcv, start_node_data_loop, Task_Args).
 
 make_support_pids() ->
@@ -94,14 +97,33 @@ make_support_pids() ->
 %%----------------------------------------------------------------------
 %% Control process interface...
 %%----------------------------------------------------------------------
--define(SYNC_RECEIVE_TIME, 2000).
+-spec node_ctl_clone  (coop_node()) -> ok.
+-spec node_ctl_stop   (coop_node()) -> ok.
+-spec node_ctl_suspend(coop_node()) -> ok.
+-spec node_ctl_resume (coop_node()) -> ok.
+-spec node_ctl_trace  (coop_node()) -> ok.
+-spec node_ctl_untrace(coop_node()) -> ok.
 
-node_ctl_clone  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, clone).
-node_ctl_stop   (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, stop).
-node_ctl_suspend(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, suspend).
-node_ctl_resume (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, resume).
-node_ctl_trace  (Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, trace).
-node_ctl_untrace(Coop_Node) -> ?SEND_CTL_MSG(Coop_Node, untrace).
+node_ctl_clone  (Coop_Node) -> send_ctl_msg(Coop_Node, clone).
+node_ctl_stop   (Coop_Node) -> send_ctl_msg(Coop_Node, stop).
+node_ctl_suspend(Coop_Node) -> send_ctl_msg(Coop_Node, suspend).
+node_ctl_resume (Coop_Node) -> send_ctl_msg(Coop_Node, resume).
+node_ctl_trace  (Coop_Node) -> send_ctl_msg(Coop_Node, trace).
+node_ctl_untrace(Coop_Node) -> send_ctl_msg(Coop_Node, untrace).
+    
+-spec send_ctl_msg(coop_node(), any()) -> ok.
+-spec send_ctl_msg_after(coop_node(), any(), non_neg_integer()) -> ok.
+
+send_ctl_msg(Coop_Node, Msg)               -> send_ctl_msg_internal(Coop_Node, Msg).
+send_ctl_msg(Coop_Node, Msg, Flag, From)   -> send_ctl_msg_internal(Coop_Node, Msg, Flag, From).
+send_ctl_msg_after(Coop_Node, Msg, Millis) -> send_ctl_msg_internal_after(Coop_Node, Msg, Millis).
+
+send_ctl_msg_internal(#coop_node{ctl_pid=Node_Ctl_Pid}, Msg)               -> Node_Ctl_Pid  ! ?CTL_MSG(Msg),                          ok.
+send_ctl_msg_internal(#coop_node{ctl_pid=Node_Ctl_Pid}, Msg, Flag, From)   -> Node_Ctl_Pid  ! ?CTL_MSG(Msg, Flag, From),              ok.
+send_ctl_msg_internal_after(#coop_node{ctl_pid=Node_Ctl_Pid}, Msg, Millis) -> erlang:send_after(Millis, Node_Ctl_Pid, ?CTL_MSG(Msg)), ok.
+
+    
+-define(SYNC_RECEIVE_TIME, 2000).
 
 wait_ctl_response(Type, Ref) ->
     receive {Type, Ref, Info} -> Info
@@ -110,51 +132,59 @@ wait_ctl_response(Type, Ref) ->
     
 node_ctl_log(Coop_Node, Flag, From) ->
     Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, log, Flag, {Ref, From}),
+    send_ctl_msg(Coop_Node, log, Flag, {Ref, From}),
     wait_ctl_response(node_ctl_log, Ref).
 
 node_ctl_log_to_file(Coop_Node, File, From) ->
     Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, log_to_file, File, {Ref, From}),
+    send_ctl_msg(Coop_Node, log_to_file, File, {Ref, From}),
     wait_ctl_response(node_ctl_log_to_file, Ref).
 
 node_ctl_stats(Coop_Node, Flag, From) ->
     Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, stats, Flag, {Ref, From}),
+    send_ctl_msg(Coop_Node, stats, Flag, {Ref, From}),
     wait_ctl_response(node_ctl_stats, Ref).
 
 node_ctl_install_trace_fn(Coop_Node, {Func, Func_State}, From) ->
     Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, install_trace_fn, {Func, Func_State}, {Ref, From}),
+    send_ctl_msg(Coop_Node, install_trace_fn, {Func, Func_State}, {Ref, From}),
     wait_ctl_response(node_ctl_install_trace_fn, Ref).
 
 node_ctl_remove_trace_fn(Coop_Node, Func, From) ->
     Ref = make_ref(),
-    ?SEND_CTL_MSG(Coop_Node, remove_trace_fn, Func, {Ref, From}),
+    send_ctl_msg(Coop_Node, remove_trace_fn, Func, {Ref, From}),
     wait_ctl_response(node_ctl_remove_trace_fn, Ref).
+
 
 %%----------------------------------------------------------------------
 %% Task process interface...
 %%----------------------------------------------------------------------
+-spec get_kill_switch(coop_node()) -> reference() | timeout.
+
+get_kill_switch(Coop_Node) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Node, {get_kill_switch, {Ref, self()}}),
+    wait_ctl_response(get_kill_switch, Ref).
+
 node_task_get_downstream_pids(#coop_node{task_pid=Node_Task_Pid}) ->
     Ref = make_ref(),
-    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {get_downstream, {Ref, self()}}},
+    Node_Task_Pid ! ?CTL_MSG({get_downstream, {Ref, self()}}),
     receive
         {get_downstream, Ref, Pids} -> Pids
     after ?SYNC_RECEIVE_TIME -> timeout
     end.
 
 node_task_add_downstream_pids(#coop_node{task_pid=Node_Task_Pid}, Pids) when is_list(Pids) ->
-    Node_Task_Pid ! {?DAG_TOKEN, ?CTL_TOKEN, {add_downstream, Pids}},
+    Node_Task_Pid ! ?CTL_MSG({add_downstream, Pids}),
+    ok.
+
+node_task_remove_downstream_pids(#coop_node{task_pid=Node_Task_Pid}, Pids) when is_list(Pids) ->
+    Node_Task_Pid ! ?CTL_MSG({remove_downstream, Pids}),
     ok.
 
 %% Deliver data to a downstream Pid or Coop_Node.
-node_task_deliver_data(#coop_node{task_pid=Node_Task_Pid}, Data) ->
-    Node_Task_Pid ! Data,
-    ok;
-node_task_deliver_data(Pid, Data) when is_pid(Pid) ->
-    Pid ! Data,
-    ok.
+node_task_deliver_data(Pid, Data) when is_pid(Pid)     -> Pid ! Data, ok;
+node_task_deliver_data(#coop_node{task_pid=Pid}, Data) -> Pid ! Data, ok.
 
 
 %%----------------------------------------------------------------------
@@ -180,7 +210,7 @@ link_loop() ->
         %% TODO: This code needs to be improved to handle remote
         %% support processes. Right now all are assumed to be local
         %% to the coop_node's erlang VM node.
-        {?DAG_TOKEN, ?CTL_TOKEN, {link, Procs}} ->
+        ?CTL_MSG({link, Procs}) ->
             [case is_process_alive(P) of
 
                  %% Crash if process to link is already dead

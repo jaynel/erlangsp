@@ -34,9 +34,9 @@
          init_acceptor/1, accept/3
         ]).
 
--callback recv(gen_tcp:socket(), string(), pos_integer(), binary()) -> ok.
--callback recv_closed(gen_tcp:socket(), string(), pos_integer()) -> ok.
--callback recv_error(gen_tcp:socket(), string(), pos_integer(), atom()) -> ok.
+-callback recv(coop_head(), gen_tcp:socket(), string(), pos_integer(), binary()) -> ok.
+-callback recv_closed(coop_head(), gen_tcp:socket(), string(), pos_integer()) -> ok.
+-callback recv_error(coop_head(), gen_tcp:socket(), string(), pos_integer(), atom()) -> ok.
 
 
 %%------------------------------------------------------------------------------
@@ -51,8 +51,8 @@
 %%
 %%------------------------------------------------------------------------------
 
--include_lib("coop/include/coop.hrl").
--include_lib("coop/include/coop_dag.hrl").
+-include("../../coop/include/coop.hrl").
+-include("../../coop/include/coop_dag.hrl").
 -include("esp_service.hrl").
 -include("esp_tcp_service.hrl").
 
@@ -102,9 +102,9 @@ new({Max_Acceptors, Min_Acceptors, Socket_Options, Style}, Fan_In)
     Listener = coop:make_dag_node(inbound, Init_Fn, Task_Fn, [], broadcast),
 
     %% Create acceptors with no downstream consumers...
-    Acc_Init_Fn = ?COOP_INIT_FN(init_acceptor, {Style}),
+    Acc_Init_Fn = ?COOP_INIT_FN(init_acceptor, Style),
     Acc_Task_Fn = ?COOP_TASK_FN(accept),
-    Acceptors = coop:make_dag_nodes(Max_Acceptors, Acc_Init_Fn, Acc_Task_Fn, [access_coop_head]),
+    Acceptors = coop:make_dag_nodes(Max_Acceptors, Acc_Init_Fn, Acc_Task_Fn, [{access_coop, instance}]),
 
     %% Connect up the fanout of Listeners -E Acceptors -> Fan_In
     Coop = coop:new_fanout(Listener, Acceptors, Fan_In),
@@ -157,8 +157,8 @@ listen(#esp_tcp_state{} = State, {start_listen, Port}) -> start_listen(State, Po
 listen(#esp_tcp_state{} = State, stop_listen)          -> stop_listen(State).
 
 %%===== Acceptor Nodes =====
-init_acceptor({_Coop_Head, {active}})  -> #esp_tcp_service{active=true};
-init_acceptor({_Coop_Head, {passive}}) -> #esp_tcp_service{active=false}.
+init_acceptor({_Coop_Head, active})  -> #esp_tcp_service{active=true};
+init_acceptor({_Coop_Head, passive}) -> #esp_tcp_service{active=false}.
 
 %% Errors with client connections in listener layer...
 accept(_Coop_Head, State, {error, {accept,         _Error}}) -> {State, ?COOP_NOOP};
@@ -185,12 +185,12 @@ accept(_Coop_Head, #esp_tcp_service{active=Active} = State, {accept, Client_Sock
     {State#esp_tcp_service{ip=Ip, port=Port, socket=Client_Socket}, ?COOP_NOOP};
 
 %% Active TCP data received...
-accept(_Coop_Head, #esp_tcp_service{active=true, client_module=CM, socket=Socket,
-                                    ip=Ip, port=Port} = State, Tcp_Message) ->
+accept(Coop_Head, #esp_tcp_service{active=true, client_module=CM, socket=Socket,
+                                   ip=Ip, port=Port} = State, Tcp_Message) ->
     case Tcp_Message of
-        {tcp,        Socket, Data}   -> CM:recv(Socket, Ip, Port, Data),         {State, ?COOP_NOOP};
-        {tcp_error,  Socket, Reason} -> CM:recv_error(Socket, Ip, Port, Reason), {State, ?COOP_NOOP};
-        {tcp_closed, Socket}         -> CM:recv_closed(Socket, Ip, Port),        exit(normal)
+        {tcp,        Socket, Data}   -> {State, CM:recv(Coop_Head, Socket, Ip, Port, Data)};
+        {tcp_error,  Socket, Reason} -> {State, CM:recv_error(Coop_Head, Socket, Ip, Port, Reason)};
+        {tcp_closed, Socket}         -> CM:recv_closed(Coop_Head, Socket, Ip, Port), exit(normal)
     end;
 
 %% Passive TCP is not implemented yet.

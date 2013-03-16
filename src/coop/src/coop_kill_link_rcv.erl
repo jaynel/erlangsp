@@ -14,7 +14,8 @@
 -author('Jay Nelson <jay@duomark.com>').
 
 %% Graph API
--export([make_kill_switch/0, link_to_kill_switch/2, link_loop/0]).
+-export([make_kill_switch/0, link_loop/0,
+         link_to_kill_switch/2, unlink_from_kill_switch/2]).
 
 -include("coop_dag.hrl").
 
@@ -22,7 +23,10 @@
 make_kill_switch() -> proc_lib:spawn(?MODULE, link_loop, []).
 
 link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
-    Kill_Switch ! {?DAG_TOKEN, ?CTL_TOKEN, {link, Procs}}.
+    Kill_Switch ! ?CTL_MSG({link, Procs}).
+
+unlink_from_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
+    Kill_Switch ! ?CTL_MSG({unlink, Procs}).
 
 link_loop() ->
     receive
@@ -31,7 +35,7 @@ link_loop() ->
         %% TODO: This code needs to be improved to handle remote
         %% support processes. Right now all are assumed to be local
         %% to the coop_head and coop_node's erlang VM node.
-        {?DAG_TOKEN, ?CTL_TOKEN, {link, Procs}} ->
+        ?CTL_MSG({link, Procs}) ->
             [case is_process_alive(P) of
 
                  %% Crash if process to link is already dead
@@ -41,6 +45,10 @@ link_loop() ->
                  true  -> link(P)
 
              end || P <- Procs],
+            link_loop();
+
+        ?CTL_MSG({unlink, Procs}) ->
+            [unlink(P) || P <- Procs],
             link_loop();
         %%------------------------------------------------------------
 

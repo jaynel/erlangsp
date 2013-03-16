@@ -19,7 +19,7 @@
          is_overloaded/1, set_overloaded/2
         ]).
 
--include_lib("coop/include/coop.hrl").
+-include("../../coop/include/coop.hrl").
 -include("esp_service.hrl").
 
 -type output_receiver() :: coop() | pid().

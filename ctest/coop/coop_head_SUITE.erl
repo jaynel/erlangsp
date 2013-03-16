@@ -231,6 +231,10 @@ sys_statistics(_Config) ->
      Root_Pid, #coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid}} = start_head(),
     Procs = [Head_Ctl_Pid, Head_Data_Pid, Node_Ctl_Pid, Node_Task_Pid, Root_Pid],
 
+    ct:log("Coop Head: ~p~n ~p~n ~p~n", [Coop_Head, is_process_alive(Head_Ctl_Pid), is_process_alive(Head_Data_Pid)]),
+    ct:log("Ctl Status: ~p~n", [sys:get_status(Head_Ctl_Pid)]),
+    ct:log("Root Status: ~p~n", [sys:get_status(Root_Pid)]),
+    ct:log("Data Status: ~p~n", [sys:get_status(Head_Data_Pid)]),
     ok = ?TM:ctl_stats(Coop_Head, true, self()),
     [true = is_process_alive(P) || P <- Procs],
     {ok, Props1} = ?TM:ctl_stats(Coop_Head, get, self()),

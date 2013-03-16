@@ -10,6 +10,7 @@
 
 %% Test message flow control for a service
 -export([start_and_stop/1]).
+-export([init_coop/1, coop_query/2]).
 
 all() -> [start_and_stop].
 
@@ -24,7 +25,8 @@ end_per_suite(_Config) -> ok.
 %% Test functions
 %%----------------------------------------------------------------------
 start_and_stop(_Config) ->
-    Tcp_Service = ?TS:new_active(5),
+    Fake_Coop = make_coop(),
+    Tcp_Service = ?TS:new_active(5, Fake_Coop),
     new = ?ES:status(Tcp_Service),
     {error, not_started} = ?ES:act_on(Tcp_Service, 5),
     Started_Service = ?TS:start(Tcp_Service, [{client_module, ?MODULE}, {port, 8200}]),
@@ -33,3 +35,14 @@ start_and_stop(_Config) ->
     stopped = ?ES:status(Stopped_Service),
     {error, stopped} = ?ES:act_on(Stopped_Service, 4),
     ok.
+
+make_coop() ->
+    Init_Fn = ?COOP_INIT_FN(init_coop, {}),
+    Task_Fn = ?COOP_TASK_FN(coop_query),
+    Coop_Master = coop:make_dag_node(inbound, Init_Fn, Task_Fn, [], broadcast),
+    coop:new_fanout(Coop_Master, [], none).
+
+init_coop({}) -> {}.
+coop_query({}, coop_query) -> coop_query.
+
+    

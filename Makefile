@@ -17,7 +17,8 @@ compile:
 	@${REBAR} compile
 
 dialyze: all
-	@dialyzer -Wrace_conditions ${ALL_APPS_DIRS}/ebin ${ALL_EXAMPLE_DIRS}/ebin
+	@dialyzer -Wrace_conditions ${ALL_APPS_DIRS}/ebin
+	### ${ALL_EXAMPLE_DIRS}/ebin
 
 gc: crash
 	@echo 'Removing all emacs backup files'

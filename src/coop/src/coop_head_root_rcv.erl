@@ -53,7 +53,7 @@ sync_pass_thru_loop(none, Debug_Opts) ->
             sync_pass_thru_loop(none, Debug_Opts);
         
         %% Connect a valid Root Node.
-        {?CTL_TOKEN, {set_root_node, {coop_node, _Node_Ctl_Pid, _Node_Task_Pid} = Coop_Node, {Ref, From}}} ->
+        {?CTL_TOKEN, {set_root_node, #coop_node{} = Coop_Node, {Ref, From}}} ->
             From ! {set_root_node, Ref, true},
             sync_pass_thru_loop(Coop_Node, Debug_Opts);
 
@@ -91,7 +91,7 @@ sync_pass_thru_loop(#coop_node{ctl_pid=Node_Ctl_Pid, task_pid=Node_Task_Pid} = C
             sync_pass_thru_loop(Coop_Root_Node, Out_Opts);
 
         %% Crash the process if unexpected data is received.
-        _Unexpected -> exit(coop_root_bad_data)
+        Unexpected -> exit({coop_root_bad_data, Unexpected})
     end.
 
 %%----------------------------------------------------------------------
