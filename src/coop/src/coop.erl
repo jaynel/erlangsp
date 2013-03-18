@@ -82,6 +82,7 @@ migrate_fanout_node(#coop_node{ctl_pid=Worker_Ctl_Pid, task_pid=Worker_Task_Pid}
     To_Body_Kill_Switch   = get_body_kill_switch(Coop_To_Root_Node),
     
     Linked_Pids = [Worker_Ctl_Pid, Worker_Task_Pid],
+    ct:log("Linked Pids: ~p~n", [Linked_Pids]),
     coop_kill_link_rcv:unlink_from_kill_switch(From_Head_Kill_Switch, Linked_Pids),
     coop_kill_link_rcv:unlink_from_kill_switch(From_Body_Kill_Switch, Linked_Pids),
     coop_node:node_task_remove_downstream_pids(Coop_From_Root_Node, [Worker]),
@@ -240,7 +241,7 @@ pipeline(Coop_Instance, Kill_Switch, Left_To_Right_Stages, Receiver) ->
 
     %% Return the coop_instance with the live coop_node graph set.
     set_coop_root_node(Coop_Instance, First_Stage_Coop_Node),
-    Coop_Instance#coop_instance{dag=Coops_Graph}.
+    Coop_Instance#coop_instance{body=First_Stage_Coop_Node, dag=Coops_Graph}.
 
 spawn_pipeline_stage(Coop_Instance, Kill_Switch, Graph,
                      {Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, options=Opts}},
@@ -273,7 +274,7 @@ fanout(Inbound, Coop_Instance, Kill_Switch, Fanout_Template_Graph) ->
 
     %% Return the coop_instance with the live coop_node graph set.
     set_coop_root_node(Coop_Instance, Inbound_Node),
-    Coop_Instance#coop_instance{dag=Coops_Graph}.
+    Coop_Instance#coop_instance{body=Inbound_Node, dag=Coops_Graph}.
 
 add_fanout_worker_node(Coop_Instance, Kill_Switch, Inbound, Has_Fan_In, Receiver, Template_Graph, Vertex_Name, Coops_Graph) ->
     {Vertex_Name, #coop_node_fn{init=Init_Fn, task=Task_Fn, options=Opts}}

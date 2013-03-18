@@ -54,7 +54,7 @@
 
 %% Internal functions that are exported (not part of the external API)
 -export([
-         get_root_pid/1, set_root_node/2,
+         get_root_pid/1, set_root_node/2, get_root_node/1,
 
          %% Send commands to coop_head data task process...
          send_ctl_msg/2, send_ctl_msg_after/3, send_ctl_change_timeout/2,
@@ -160,6 +160,12 @@ set_root_node(#coop_head{} = Coop_Head, #coop_node{} = Coop_Node) ->
     Ref = make_ref(),
     send_ctl_msg(Coop_Head, {set_root_node, Coop_Node, {Ref, self()}}),
     wait_ctl_response(set_root_node, Ref).
+
+get_root_node(#coop_head{} = Coop_Head) ->
+    Ref = make_ref(),
+    send_ctl_msg(Coop_Head, {get_root_node, {Ref, self()}}),
+    wait_ctl_response(get_root_node, Ref).
+
 
 
 %%----------------------------------------------------------------------

@@ -11,18 +11,20 @@
 %% Pipeline and fanout tests
 -export([pipeline_flow/1, pipeline_failure/1, pipeline/1,
          fanout_flow/1, fanout_failure/1,
-         fanout_round_robin/1, fanout_broadcast/1
+         fanout_round_robin/1, fanout_broadcast/1,
+         fanout_migrate/1
         ]).
 
 %% Node task and init functions
 -export([init/1, plus2/2, times3/2, minus5/2, rr_init/1, rr_inc/2]).
 
 %% Test procs for validating process message output
--export([receive_pipe_results/0, receive_round_robin_results/2]).
+-export([receive_pipe_results/0, receive_round_robin_results/3]).
  
 all() -> [pipeline_flow, pipeline_failure, pipeline, 
           fanout_flow, fanout_failure,
-          fanout_round_robin, fanout_broadcast
+          fanout_round_robin, fanout_broadcast,
+          fanout_migrate
          ].
 
 init_per_suite(Config) -> Config.
@@ -44,13 +46,6 @@ pipeline_failure(_Config) ->
 init([f1]) -> f1;
 init([f2]) -> f2;
 init([f3]) -> f3.
-
-%% make_fake_instance() ->
-%%     #coop_instance{id=1, name=fake, head=make_fake_head(), body=none, dag=none}.
-
-%% make_fake_head() ->
-%%     Head_Kill_Switch = coop_kill_link_rcv:make_kill_switch(),
-%%     coop_head:new(Head_Kill_Switch, none).
 
 %% Init state and looping state are unused, but checked placeholders.
 plus2(f1, Num)  -> {f1, Num+2}.
@@ -177,7 +172,7 @@ make_fanout_coop(Dataflow_Type, Num_Workers, Receiver_Pid) ->
 fanout_round_robin(_Config) ->
     Num_Results = 6,
     Num_Workers = 3,
-    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
+    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, [], Num_Results]),
     Coop = make_fanout_coop(round_robin, Num_Workers, Receiver_Pid),
     Coops_Graph = (Coop#coop.instances)#coop_instance.dag,
     Fanout_Stats = digraph:info(Coops_Graph),
@@ -194,11 +189,23 @@ fanout_round_robin(_Config) ->
     2 = length(Results2),
     Results0 = Results2 -- [8,8],
     0 = length(Results0).
+
+%% State is an amount to increment; dataflow returns constant State and incremented input.
+rr_init([Inc_Amt]) -> Inc_Amt.
+rr_inc(Inc_Amt, Value) -> {Inc_Amt, Value + Inc_Amt}.
+    
+receive_round_robin_results(0, Acc, N) ->
+    hold_results(lists:reverse(Acc)),
+    receive_round_robin_results(N, [], N);
+receive_round_robin_results(M, Acc, N) ->
+    receive Any -> receive_round_robin_results(M-1, [Any | Acc], N)
+    after  3000 -> hold_results([timeout | Acc])
+    end.
     
 fanout_broadcast(_Config) ->
     Num_Results = 12,
     Num_Workers = 4,
-    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, []]),
+    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, [], Num_Results]),
     Coop = make_fanout_coop(broadcast, Num_Workers, Receiver_Pid),
     Coops_Graph = (Coop#coop.instances)#coop_instance.dag,
     Fanout_Stats = digraph:info(Coops_Graph),
@@ -217,16 +224,37 @@ fanout_broadcast(_Config) ->
     3 = length(Results3),
     Results0 = Results3 -- [11,11,11],
     0 = length(Results0).
-    
-rr_init([Inc_Amt]) -> Inc_Amt.
-rr_inc(Inc_Amt, Value) -> {Inc_Amt, Value + Inc_Amt}.
-    
-receive_round_robin_results(0, Acc) -> hold_results(lists:reverse(Acc));
-receive_round_robin_results(N, Acc) ->
-    receive Any -> receive_round_robin_results(N-1, [Any | Acc])
-    after  3000 -> hold_results([timeout | Acc])
-    end.
 
+fanout_migrate(_Config) ->
+    Num_Results = 2,
+    Num_Workers = 4,
+    Receiver_Pid = spawn_link(?MODULE, receive_round_robin_results, [Num_Results, [], Num_Results]),
+    Coop1 = make_fanout_coop(broadcast, Num_Workers, Receiver_Pid),
+    Coops_Graph = (Coop1#coop.instances)#coop_instance.dag,
+    Fanout_Stats = digraph:info(Coops_Graph),
+    acyclic = proplists:get_value(cyclicity, Fanout_Stats),
+    6 = digraph:no_vertices(Coops_Graph),
+    8 = digraph:no_edges(Coops_Graph),
+    coop:relay_data(Coop1, 9),
+    timer:sleep(100),
+    Results1 = fetch_results(Receiver_Pid),
+    2 = length(Results1),
+    Results2 = fetch_results(Receiver_Pid),
+    2 = length(Results2),
+    [] = ([10, 11, 12, 13] -- Results1) -- Results2,
+    timeout_fetching = fetch_results(Receiver_Pid),
+    Head1 = coop:head(Coop1),
+    Root_Node1 = coop_head:get_root_node(Head1),
+    [Node1, Node2, Node3, Node4] = coop_node:node_task_get_downstream_pids(Root_Node1),
+    Coop2 = make_fanout_coop(broadcast, 0, none),
+    Head2 = coop:head(Coop2),
+    Root_Node2 = coop_head:get_root_node(Head2),
+    ct:log("Node1: ~p~nInstance1: ~p~nInstance2: ~p~n",
+           [Node1, Coop1#coop.instances, Coop2#coop.instances]),
+    ok = coop:migrate_fanout_node(Node1, Coop1#coop.instances, Coop2#coop.instances),
+    [Node2, Node3, Node4] = coop_node:node_task_get_downstream_pids(Root_Node1),
+    [Node1] = coop_node:node_task_get_downstream_pids(Root_Node2).
+    
 
 %%----------------------------------------------------------------------
 %% Utilities for receiving coop results

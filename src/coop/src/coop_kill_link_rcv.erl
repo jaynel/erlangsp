@@ -26,6 +26,7 @@ link_to_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
     Kill_Switch ! ?CTL_MSG({link, Procs}).
 
 unlink_from_kill_switch(Kill_Switch, Procs) when is_list(Procs) ->
+    ct:log("Kill switch: ~p~n", [Kill_Switch]),
     Kill_Switch ! ?CTL_MSG({unlink, Procs}).
 
 link_loop() ->

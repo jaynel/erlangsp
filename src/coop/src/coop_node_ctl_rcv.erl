@@ -47,6 +47,8 @@ node_ctl_loop(#coop_node_state{task=Task_Pid, trace=Trace_Pid} = Coop_Node_State
         ?CTL_MSG(log_to_file, File, {Ref, From}) -> From ! {node_ctl_log_to_file, Ref, sys:log_to_file(Task_Pid, File)};
         ?CTL_MSG(stats,       Flag, {Ref, From}) -> From ! {node_ctl_stats, Ref, sys:statistics(Task_Pid, Flag)};
 
+        ?CTL_MSG({get_kill_switch,  {Ref, From}}) -> From ! {get_kill_switch, Ref, Coop_Node_State#coop_node_state.kill_switch};
+
         ?CTL_MSG(install_trace_fn, FInfo, {Ref, From}) -> From ! {node_ctl_install_trace_fn, Ref, sys:install(Task_Pid, FInfo)};
         ?CTL_MSG(remove_trace_fn,  FInfo, {Ref, From}) -> From ! {node_ctl_remove_trace_fn,  Ref, sys:remove(Task_Pid, FInfo)};
 

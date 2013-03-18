@@ -73,6 +73,7 @@ msg_loop(#coop_head_state{} = State, Root_Pid, Timeout, Debug_Opts) ->
         ?CTL_MSG({change_timeout, New_Timeout})   -> msg_loop(State, Root_Pid, New_Timeout, Debug_Opts);
         ?CTL_MSG({get_kill_switch, {Ref, From}})  -> From ! {get_kill_switch, Ref, State#coop_head_state.kill_switch}, ?MSG_LOOP_RECURSE;
         ?CTL_MSG({get_root_pid, {Ref, From}})     -> From ! {get_root_pid, Ref, Root_Pid},                             ?MSG_LOOP_RECURSE;
+        ?CTL_MSG({get_root_node, {Ref, From}})    -> From ! {get_root_node, Ref, State#coop_head_state.coop_root_node},?MSG_LOOP_RECURSE;
         ?CTL_MSG({set_root_node, #coop_node{} = Coop_Node, {Ref, From}} = Msg) ->
             case State#coop_head_state.coop_root_node of
                 none ->
