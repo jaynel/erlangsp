@@ -18,7 +18,7 @@
 -module(coop_head_root_rcv).
 -author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("license_and_copyright.hrl").
 
 %% Receive loop methods
 -export([sync_pass_thru_loop/1]).

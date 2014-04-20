@@ -11,7 +11,7 @@
 -module(coop).
 -author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("license_and_copyright.hrl").
 
 %% External API
 -export([

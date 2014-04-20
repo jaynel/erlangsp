@@ -11,7 +11,7 @@
 -module(coop_node_data_rcv).
 -author('Jay Nelson <jay@duomark.com>').
 
--include("../erlangsp/include/license_and_copyright.hrl").
+-include("license_and_copyright.hrl").
 
 %% Graph API
 -export([start_node_data_loop/6]).
