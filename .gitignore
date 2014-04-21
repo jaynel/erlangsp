@@ -1,3 +1,4 @@
+.erlangsp.plt
 test/logs
 *.beam
 deps
