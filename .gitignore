@@ -1,6 +1,4 @@
-apps/ctest/logs
-rel/erlangsp
-.eunit
+test/logs
 *.beam
 deps
 ebin

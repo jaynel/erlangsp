@@ -1,3 +1,5 @@
+%% -*- mode: erlang -*-
+
 {application, erlangsp,
  [
   {vsn,          "0.1.0"},
@@ -6,10 +8,10 @@
 
   {mod,          {erlangsp_app, []}},
   {env,          []},
-  {modules,      []},
+  {modules,      [erlangsp_app, erlangsp_sup]},
   {registered,   []},
 
-  {applications, [kernel, stdlib, sasl]},
+  {applications, [kernel, stdlib]},
   {included_applications, []}
  ]
 }.

@@ -1,0 +1,9 @@
+%% -*- mode: erlang -*-
+
+{export,    "./erlangsp/logs/cover"}.
+{level,     details}.
+{incl_dirs, ["src/"]}.
+{incl_mods, [
+             erlangsp_app,
+             erlangsp_sup
+            ]}.
