@@ -74,7 +74,8 @@
 %% if none this option does not expose an extra arg in the Node Task Fucntion return.
 -type coop_data_options() :: [proplists:property()].
 -record(coop_node_options, {
-          access_coop = none :: none | head | instance
+%%          access_coop = none :: none | head | instance
+          access_coop_head = none :: none | head | instance
          }).
 
 %% Co-op Nodes are initialized as M:F(Arg) or M:F({Coop_Head, Arg})

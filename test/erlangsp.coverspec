@@ -5,5 +5,6 @@
 {incl_dirs, ["src/"]}.
 {incl_mods, [
              erlangsp_app,
-             erlangsp_sup
+             erlangsp_sup,
+             esp_service
             ]}.

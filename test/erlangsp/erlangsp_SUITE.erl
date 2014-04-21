@@ -14,13 +14,17 @@
 
 -export([all/0, init_per_suite/1, end_per_suite/1]).
 -export([
-         check_app/1
+         check_app/1,
+         check_service/1
         ]).
 
 -include("../erlangsp_common_test.hrl").
+-include("coop.hrl").
+-include("esp_service.hrl").
 
 all() -> [
-          check_app
+          check_app,
+          check_service
          ].
 
 init_per_suite(Config) -> Config.
@@ -44,4 +48,13 @@ check_app(_Config) ->
     After_Stop_Apps = application:which_applications(),
     [] = [App || App = {erlangsp, _Desc, _Vsn} <- After_Stop_Apps],
     undefined = whereis(erlangsp_sup),
+    ok.
+
+-spec check_service(config()) -> ok.
+check_service(_Config) ->
+
+    ct:log("Start a new esp_service"),
+    Firehose = #coop_instance{id=1, name=firehose},
+    Coop = #coop{instances=Firehose, dataflow=round_robin},
+    #esp_svc{coop=Coop} = esp_service:make_service(Coop),
     ok.
