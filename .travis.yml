@@ -3,7 +3,7 @@ language: erlang
 otp_release:
    - R15B
 
-script: "make test"
+script: "make tests"
 
 notifications:
    recipients:
